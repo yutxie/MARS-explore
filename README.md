@@ -30,7 +30,7 @@ python -m MARS.datasets.prepro_vocab
 To sample molecules:
 
 ```bash
-python -m MARS.main --run_dir runs/RUN_DIR
+python -m MARS.main --train --run_dir runs/RUN_DIR
 ```
 
 ## Citation
