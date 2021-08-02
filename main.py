@@ -10,7 +10,6 @@ from tqdm import tqdm
 from rdkit import Chem, RDLogger
 
 from .estimator.estimator import Estimator
-from .estimator.models import Discriminator
 from .proposal.models.editor_basic import BasicEditor
 from .proposal.proposal import Proposal_Random, Proposal_Editor, Proposal_Mix
 from .sampler import Sampler_SA, Sampler_MH, Sampler_Recursive
@@ -83,9 +82,7 @@ if __name__ == '__main__':
     ### estimator
     if config['mols_ref']: config['mols_ref'] = \
         load_mols(config['data_dir'], config['mols_ref'])
-    discriminator = Discriminator(config).to(
-        config['device']) if 'adv' in config['objectives'] else None
-    estimator = Estimator(config, discriminator)
+    estimator = Estimator(config)
     
     for run in range(config['num_runs']):
         run_dir = os.path.join(config['run_dir'], 'run_%02d' % run)
