@@ -48,12 +48,6 @@ class Sampler():
             self.DATASET_MAX_SIZE = config['dataset_size']
             self.optimizer = torch.optim.Adam(self.proposal.editor.parameters(), lr=config['lr'])
 
-        ### for training adversarial discriminator
-        self.adv = 'adv' in config['objectives']
-        if self.adv:
-            self.real_mols, _ = load_mols(config['data_dir'], config['mols_init'], limit=config['mols_limit'])
-            self.optimizer_adv = torch.optim.Adam(self.estimator.discriminator.parameters(), lr=config['lr'])
-
     def scores_from_dicts(self, dicts):
         '''
         @params:
@@ -246,38 +240,6 @@ class Sampler():
                 if not self.proposal.editor.device == \
                     torch.device('cpu'):
                     torch.cuda.empty_cache()
-
-            ### train adversarial discriminator
-            if self.adv:
-                MAX_STEP = 10
-                batch_size = int(self.batch_size * 20 / self.last_avg_size)
-                self.estimator.batch_size = batch_size
-                dataset_size = batch_size * MAX_STEP
-                fake_mols = random.choices(old_mols, k=dataset_size)
-                real_mols = random.choices(self.real_mols, k=dataset_size)
-                fake_mols = [mol_to_dgl(mol) for mol in fake_mols]
-                real_mols = [mol_to_dgl(mol) for mol in real_mols]
-                graphs = real_mols + fake_mols
-                labels = [1 for _ in real_mols] + [0 for _ in fake_mols]
-                dataset = GraphClassificationDataset(graphs, labels)
-                log.info('formed an adversarial dataset of size %i' % len(dataset))
-                loader = data.DataLoader(dataset,
-                    batch_size=batch_size, shuffle=True,
-                    collate_fn=GraphClassificationDataset.collate_fn
-                )
-
-                train(
-                    model=self.estimator.discriminator, 
-                    loaders={'dev': loader}, 
-                    optimizer=self.optimizer_adv,
-                    n_epoch=1,
-                    log_every=5,
-                    max_step=MAX_STEP,
-                    metrics=[
-                        'loss', 'acc',
-                        'rec', 'prec', 'f1'
-                    ]
-                )
 
 
 class Sampler_SA(Sampler):
