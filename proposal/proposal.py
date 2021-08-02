@@ -248,7 +248,7 @@ class Proposal_Mix(Proposal):
         super().__init__(config)
         self.proposal_random = Proposal_Random(config)
         self.proposal_editor = Proposal_Editor(config, editor)
-        self.random_ratio = config['rand_ratio']
+        self.random_ratio = .1
         self.editor = self.proposal_editor.editor
 
     def get_pred(self, graphs):
