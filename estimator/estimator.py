@@ -11,14 +11,12 @@ from ..datasets.datasets import GraphDataset
 
 
 class Estimator():
-    def __init__(self, config, discriminator=None, mols_ref=None):
+    def __init__(self, config, mols_ref=None):
         '''
         @params:
             config (dict): configurations
-            discriminator (nn.Module): adversarial discriminator
         '''
         # chemprop_scorer.device = config['device']
-        self.discriminator = discriminator
         self.batch_size = config['batch_size']
         self.objectives = config['objectives']
         self.fps_ref = [AllChem.GetMorganFingerprintAsBitVect(x, 3, 2048) 
@@ -31,11 +29,9 @@ class Estimator():
         @return:
             dicts (list): list of score dictionaries
         '''
-        if 'nov' in self.objectives or 'div' in self.objectives:
-            fps_mols = [AllChem.GetMorganFingerprintAsBitVect(x, 3, 2048) for x in mols]
-
         dicts = [{} for _ in mols]
         for obj in self.objectives:
             scores = get_scores(obj, mols)
             for i, mol in enumerate(mols):
                 dicts[i][obj] = scores[i]
+        return dicts
