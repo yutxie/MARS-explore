@@ -33,6 +33,12 @@ To sample molecules:
 python -m MARS.main --train --run_dir runs/RUN_DIR
 ```
 
+## Evaluation and Generated Molecules
+
+The generated molecules are evaluated at each step and the results are stored in `runs/RUN_DIR` (`runs/debug` by default). Please refer to tensorboard files for the evaluation results and `mols.txt` for all the molecules generated during sampling. 
+
+The experiment results we listed in the paper are obtained by averaging the outcomes of 10 independent sampling paths. For each sampling path, we record the evaluation results of the step that procuces the highest PM score. 
+
 ## Citation
 
 ```
