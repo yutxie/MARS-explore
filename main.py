@@ -9,11 +9,12 @@ import logging as log
 from tqdm import tqdm
 from rdkit import Chem, RDLogger
 
-from .estimator.estimator import Estimator
+from .datasets.utils import load_mols
+from .scorer.scorer import Scorer
 from .proposal.models.editor_basic import BasicEditor
 from .proposal.proposal import Proposal_Random, Proposal_Editor, Proposal_Mix
+from .evaluator import Evaluator
 from .sampler import Sampler_SA, Sampler_MH, Sampler_Recursive
-from .datasets.utils import load_mols
 
 lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)
@@ -29,22 +30,22 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir',   type=str,   default='data')
     parser.add_argument('--run_dir',    type=str,   default='runs/debug')
     parser.add_argument('--editor_dir', type=str,   default=None)
-    parser.add_argument('--mols_ref',  type=str,    default=None)
+    parser.add_argument('--mols_refe',  type=str,   default=None)
     parser.add_argument('--mols_init',  type=str,   default=None)
     parser.add_argument('--vocab',      type=str,   default='chembl')
     parser.add_argument('--vocab_size', type=int,   default=1000)
     parser.add_argument('--max_size',   type=int,   default=40)
-    parser.add_argument('--num_mols',   type=int,   default=1000)
+    parser.add_argument('--num_path',   type=int,   default=1000)
     parser.add_argument('--num_step',   type=int,   default=1000)
     parser.add_argument('--num_runs',   type=int,   default=10)
     parser.add_argument('--log_every',  type=int,   default=1)
 
-    parser.add_argument('--sampler',    type=str,   default='sa',       help='mcmc sampling algorithm')
-    parser.add_argument('--proposal',   type=str,   default='editor',   help='how to pose proposals')
-    parser.add_argument('--objectives', type=str,   default='gsk3b,jnk3,qed,sa')
+    parser.add_argument('--sampler',    type=str,   default='sa')
+    parser.add_argument('--proposal',   type=str,   default='editor')
+    parser.add_argument('--objectives', type=str,   default='gsk3b,jnk3, qed,  sa')
     parser.add_argument('--score_wght', type=str,   default='  1.0, 1.0, 1.0, 1.0')
     parser.add_argument('--score_succ', type=str,   default='  0.5, 0.5, 0.6, .67')
-    parser.add_argument('--score_clip', type=str,   default='  0.6, 0.6, 0.7, 0.7')
+    parser.add_argument('--score_clip', type=str,   default='  0.6, 0.6, 0.7, 0.7') # TODO
     
     parser.add_argument('--lr',             type=float, default=3e-4)
     parser.add_argument('--dataset_size',   type=int,   default=50000)
@@ -60,6 +61,8 @@ if __name__ == '__main__':
 
     config = vars(args)
     config['device'] = torch.device(config['device'])
+    config['run_dir'] = os.path.join(config['root_dir'], config['run_dir'])
+    config['data_dir'] = os.path.join(config['root_dir'], config['data_dir'])
     config['objectives'] = config['objectives'].split(',')
     config['score_wght'] = [float(_) for _ in config['score_wght'].split(',')]
     config['score_succ'] = [float(_) for _ in config['score_succ'].split(',')]
@@ -67,22 +70,19 @@ if __name__ == '__main__':
     assert len(config['score_wght']) == len(config['objectives'])
     assert len(config['score_succ']) == len(config['objectives'])
     assert len(config['score_clip']) == len(config['objectives'])
-    config['run_dir'] = os.path.join(config['root_dir'], config['run_dir'])
-    config['data_dir'] = os.path.join(config['root_dir'], config['data_dir'])
     os.makedirs(config['run_dir'], exist_ok=config['run_exist'])
     log.basicConfig(format='%(asctime)s: %(message)s', datefmt='%m/%d %I:%M:%S %p', level=log.INFO)
     log.getLogger().addHandler(log.FileHandler(os.path.join(config['run_dir'], 'log.txt'), mode='w'))
     log.info(str(config))
 
-    random.seed(0)
-    torch.manual_seed(0)
-    torch.cuda.manual_seed(0)
-    np.random.seed(0)
+    random.seed(42)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    np.random.seed(42)
 
-    ### estimator
-    if config['mols_ref']: config['mols_ref'] = \
-        load_mols(config['data_dir'], config['mols_ref'])
-    estimator = Estimator(config)
+
+    ### scorer
+    scorer = Scorer(config)
     
     for run in range(config['num_runs']):
         run_dir = os.path.join(config['run_dir'], 'run_%02d' % run)
@@ -100,17 +100,21 @@ if __name__ == '__main__':
         elif config['proposal'] == 'mix': proposal = Proposal_Mix(config, editor)
         else: raise NotImplementedError
 
-        ### sampler
-        if config['sampler'] == 're': sampler = Sampler_Recursive(config, proposal, estimator)
-        elif config['sampler'] == 'sa': sampler = Sampler_SA(config, proposal, estimator)
-        elif config['sampler'] == 'mh': sampler = Sampler_MH(config, proposal, estimator)
-        else: raise NotImplementedError
-
-        ### sampling
+        ### evaluator
+        if config['mols_refe']: 
+            mols_refe = load_mols(config['data_dir'], config['mols_ref'])
+        else: mols_refe = []
         if config['mols_init']:
             mols = load_mols(config['data_dir'], config['mols_init'])
             mols = random.choices(mols, k=config['num_mols'])
             mols_init = mols[:config['num_mols']]
         else: mols_init = [
             Chem.MolFromSmiles('CC') for _ in range(config['num_mols'])]
+        evaluator = Evaluator(config, mols_refe, mols_init)
+
+        ### sampler
+        if config['sampler'] == 're': sampler = Sampler_Recursive(config, scorer, proposal, evaluator)
+        elif config['sampler'] == 'sa': sampler = Sampler_SA(config, scorer, proposal, evaluator)
+        elif config['sampler'] == 'mh': sampler = Sampler_MH(config, scorer, proposal, evaluator)
+        else: raise NotImplementedError
         sampler.sample(run_dir, mols_init)

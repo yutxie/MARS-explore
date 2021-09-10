@@ -5,7 +5,7 @@ from tqdm import tqdm
 from rdkit import Chem, RDLogger
 
 from .utils import load_mols
-from ..common.chem import break_bond, Arm, Skeleton
+from ..utils.chem import break_bond, Arm, Skeleton
 
 lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)

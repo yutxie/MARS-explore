@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch import nn
 from dgl.nn.pytorch.glob import Set2Set
 
-from ..common.nn import GraphEncoder, MLP
+from ..utils.nn import GraphEncoder, MLP
 
 
 class Discriminator(nn.Module):

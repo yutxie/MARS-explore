@@ -3,29 +3,9 @@
 import math
 import rdkit
 from rdkit import Chem, DataStructs
-from rdkit.Chem import AllChem
 from rdkit.Chem import Descriptors
 import rdkit.Chem.QED as QED
 import networkx as nx
-
-from ...common.chem import standardize_smiles
-from . import sa_scorer, kinase_scorer #, drd2_scorer, chemprop_scorer
-
-### get scores
-def get_scores(objective, mols):
-    mols = [standardize_smiles(mol) for mol in mols]
-    mols_valid = [mol for mol in mols if mol is not None]
-    
-    if objective == 'drd2':
-        scores = drd2_scorer.get_scores(mols_valid)
-    elif objective == 'jnk3' or objective == 'gsk3b':
-        scores = kinase_scorer.get_scores(objective, mols_valid)
-    elif objective.startswith('chemprop'):
-        scores = chemprop_scorer.get_scores(objective, mols_valid)
-    else: scores = [get_score(objective, mol) for mol in mols_valid]
-        
-    scores = [scores.pop(0) if mol is not None else 0. for mol in mols]
-    return scores
 
 def get_score(objective, mol):
     try:
@@ -47,8 +27,6 @@ def get_score(objective, mol):
     except ValueError:
         return 0.
 
-    
-### molecular properties
 def mw(mol):
     '''
     molecular weight estimation from qed

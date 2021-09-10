@@ -1,15 +1,17 @@
 import os
 import pickle
 import numpy as np
-from rdkit import Chem, RDLogger
+from rdkit import RDLogger
+from rdkit import Chem, DataStructs
+from rdkit.Chem import AllChem
 
-from ...common.chem import fingerprints_from_mol
+from ...utils.chem import fingerprints_from_mol
 
 lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)
 
 
-ROOT_DIR = 'MARS/estimator/scorer'
+ROOT_DIR = 'MARS/scorer/scorers'
 TASKS = ['gsk3b', 'jnk3']
 SPLITS = ['val', 'dev']
 
@@ -74,3 +76,13 @@ if __name__ == '__main__':
             acc = models[task].score(X, y)
             print('accuracy on %s %s: %.4f' % (task, split, acc))
             print(pred)
+
+
+def fingerprints_from_mol(mol):
+    fp = AllChem.GetMorganFingerprint(mol, 3, useCounts=True, useFeatures=True)
+    size = 1024
+    nfp = np.zeros((size), np.int32)
+    for idx,v in fp.GetNonzeroElements().items():
+        nidx = idx%size
+        nfp[nidx] += int(v)
+    return nfp

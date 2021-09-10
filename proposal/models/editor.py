@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
 
-from MARS.common.nn import GraphEncoder, MLP
+from ..utils.nn import GraphEncoder, MLP
 
 class Editor(ABC, nn.Module):
     def __init__(self, config):

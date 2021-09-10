@@ -9,7 +9,7 @@ from chemprop.utils import load_args, load_checkpoint, load_scalers
 
 models = {}
 device = None
-ROOT_DIR = 'MARS/estimator/scorer'
+ROOT_DIR = 'MARS/scorer/scorers'
 
 class chemprop_model():
     def __init__(self, checkpoint_dir):

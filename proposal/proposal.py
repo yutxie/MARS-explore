@@ -12,8 +12,8 @@ from torch.utils.data import DataLoader
 
 from ..datasets.utils import load_mols, load_vocab
 from ..datasets.datasets import GraphDataset, ImitationDataset
-from ..common.utils import sample_idx
-from ..common.chem import mol_to_dgl, check_validity, \
+from ..utils.utils import sample_idx
+from ..utils.chem import mol_to_dgl, check_validity, \
                           Skeleton, break_bond, combine
 
 
@@ -80,15 +80,15 @@ class Proposal(ABC):
             mols : molecules to edit
         @return:
             new_mols     : proposed new molecules
-            fixings      : fixing propotions for each proposal
+            pops         : transition probability p over p for each proposal
         '''
         ### forward proposal: g(x|x')
-        fixings = [1. for _ in mols]
+        pops = [1. for _ in mols]
         graphs = [mol_to_dgl(mol) for mol in mols]
         prob_act, prob_del, prob_add, \
             prob_arm = self.get_prob(graphs)
         
-        new_mols, graphs_ = [], [] # var_: for computing fixings
+        new_mols, graphs_ = [], [] # var_: for computing pops
         actions,  del_idxs,  add_idxs,  arm_idxs  = [], [], [], []
         actions_, del_idxs_, add_idxs_, arm_idxs_ = [], [], [], []
         for i, mol in enumerate(mols):
@@ -122,8 +122,8 @@ class Proposal(ABC):
                         del_idx_ = None
                         add_idx_ = skeleton.u
                         arm_idx_ = self.vocab.smiles2idx.get(old_smiles)
-                        fixings[i] *= prob_act[i][action]
-                        fixings[i] *= prob_del[i][del_idx]
+                        pops[i] *= prob_act[i][action]
+                        pops[i] *= prob_del[i][del_idx]
                 else: not_change = True
 
             elif action == 1: # add
@@ -144,9 +144,9 @@ class Proposal(ABC):
                         del_idx_ = (u * v).long().argmax().item()
                         add_idx_ = None
                         arm_idx_ = None
-                        fixings[i] *= prob_act[i][action]
-                        fixings[i] *= prob_add[i][add_idx]
-                        fixings[i] *= prob_arm[i][add_idx][arm_idx]
+                        pops[i] *= prob_act[i][action]
+                        pops[i] *= prob_add[i][add_idx]
+                        pops[i] *= prob_arm[i][add_idx][arm_idx]
                 else: not_change = True
             else: raise NotImplementedError
 
@@ -158,7 +158,7 @@ class Proposal(ABC):
                     del_idx_ = None
                     add_idx_ = None
                     arm_idx_ = None
-                    fixings[i] = 0.
+                    pops[i] = 0.
 
             new_mols.append(new_mol)
             if backward:
@@ -182,13 +182,13 @@ class Proposal(ABC):
                 add_idx_ = add_idxs_[i]
                 arm_idx_ = arm_idxs_[i]
                 if action_ == 0: # del
-                    fixings[i] *= prob_act_[i][action_]
-                    fixings[i] *= prob_del_[i][del_idx_]
+                    pops[i] *= prob_act_[i][action_]
+                    pops[i] *= prob_del_[i][del_idx_]
                 elif action_ == 1: # add
-                    fixings[i] *= prob_act_[i][action_]
-                    fixings[i] *= prob_add_[i][add_idx_]
-                    if arm_idx_ is None: fixings[i] *= 0.
-                    else: fixings[i] *= prob_arm_[i][add_idx_][arm_idx_]
+                    pops[i] *= prob_act_[i][action_]
+                    pops[i] *= prob_add_[i][add_idx_]
+                    if arm_idx_ is None: pops[i] *= 0.
+                    else: pops[i] *= prob_arm_[i][add_idx_][arm_idx_]
                 else: raise NotImplementedError
 
         edits = {
@@ -198,7 +198,7 @@ class Proposal(ABC):
             'arm': arm_idxs
         }
         self.dataset = ImitationDataset(graphs, edits)
-        return new_mols, fixings
+        return new_mols, pops
 
 
 class Proposal_Editor(Proposal):
