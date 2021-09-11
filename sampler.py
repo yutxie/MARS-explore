@@ -65,13 +65,14 @@ class Sampler():
         sizes = [mol.GetNumAtoms() for mol in mols]
         avg_size = sum(sizes) / len(mols)
         self.last_avg_size = avg_size
-
-        ### evaluation
-        self.evaluator.update(mols, dicts)
+        
+        ### evaluation results
         scalars, succ_dict = self.evaluator.get_results()
 
         ### logging and writing tensorboard
         log.info('Step: {:02d},\tMean Avg Score: {:.7f}'.format(step, mean_avg_score))
+        log.info('\t%s' % str(scalars))
+        log.info('\t%s' % str(succ_dict))
         self.writer.add_scalar('mean_avg_score', mean_avg_score, step)
         self.writer.add_scalar('avg_size', avg_size, step)
         self.writer.add_scalars('scalars', scalars, step)
@@ -110,10 +111,10 @@ class Sampler():
         old_dicts = self.scorer.get_scores(old_mols)
         old_scores = self.average_scores(old_dicts)
         acc_rates = [0. for _ in old_mols]
+        self.evaluator.update(old_mols, old_dicts)
         self.record(-1, old_mols, old_dicts, acc_rates)
 
         for step in range(self.num_step):
-            if self.patience <= 0: break
             self.step = step
             new_mols, pops = self.proposal.propose(old_mols) 
             new_dicts = self.scorer.get_scores(new_mols)
@@ -136,6 +137,8 @@ class Sampler():
                 old_mols[i] = new_mols[i]
                 old_scores[i] = new_scores[i]
                 old_dicts[i] = new_dicts[i]
+
+            self.evaluator.update(old_mols, old_dicts)
             if step % self.log_every == 0:
                 self.record(step, old_mols, old_dicts, acc_rates)
 
@@ -181,8 +184,8 @@ class Sampler():
 
 
 class Sampler_SA(Sampler):
-    def __init__(self, config, proposal, scorer):
-        super().__init__(config, proposal, scorer)
+    def __init__(self, *args):
+        super().__init__(*args)
         self.k = 0
         self.step_cur_T = 0
         self.T = Sampler_SA.T_k(self.k)
@@ -220,8 +223,8 @@ class Sampler_SA(Sampler):
 
 
 class Sampler_MH(Sampler):
-    def __init__(self, config, proposal, scorer):
-        super().__init__(config, proposal, scorer)
+    def __init__(self, *args):
+        super().__init__(*args)
         self.power = 30.
         
     def acc_rates(self, new_scores, old_scores, pops):
@@ -234,8 +237,8 @@ class Sampler_MH(Sampler):
 
 
 class Sampler_Recursive(Sampler):
-    def __init__(self, config, proposal, scorer):
-        super().__init__(config, proposal, scorer)
+    def __init__(self, *args):
+        super().__init__(*args)
         
     def acc_rates(self, new_scores, old_scores, pops):
         acc_rates = []

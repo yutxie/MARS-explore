@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from dgl.nn.pytorch.glob import Set2Set
 
-from ..utils.nn import MLP
+from ...utils.nn import MLP
 from .editor import Editor
 
 class BasicEditor(Editor):

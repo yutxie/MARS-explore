@@ -9,6 +9,12 @@ from rdkit.Chem import AllChem, DataStructs
 from collections import defaultdict
 
 
+BOND_TYPES = [
+        Chem.rdchem.BondType.SINGLE,
+        Chem.rdchem.BondType.DOUBLE,
+        Chem.rdchem.BondType.TRIPLE,
+        Chem.rdchem.BondType.AROMATIC, None]
+
 ### validity
 def standardize_smiles(mol):
     try:
@@ -116,12 +122,9 @@ def combine(skeleton, arm):
 
 
 ### data transformation
-def fingerprints_from_mol(mol):
-    fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, 1024)
-    nfp = np.zeros((0, ), dtype=np.int8)
-    DataStructs.ConvertToNumpyArray(fp, nfp)
-    return nfp
-
+def fingerprint(mol, r=3, nBits=2048):
+    return AllChem.GetMorganFingerprintAsBitVect(mol, r, nBits)
+    
 def mol_to_dgl(mol):
     '''
     @params:
@@ -177,11 +180,6 @@ def mol_to_dgl(mol):
     g.add_nodes(num=num_atoms, data=atom_feats)
 
     # add edges, not complete
-    BOND_TYPES = [
-        Chem.rdchem.BondType.SINGLE,
-        Chem.rdchem.BondType.DOUBLE,
-        Chem.rdchem.BondType.TRIPLE,
-        Chem.rdchem.BondType.AROMATIC, None]
     def zinc_edges(mol, edges, self_loop=False):
         bond_feats_dict = defaultdict(list)
         edges = [idxs.tolist() for idxs in edges]

@@ -30,22 +30,23 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir',   type=str,   default='data')
     parser.add_argument('--run_dir',    type=str,   default='runs/debug')
     parser.add_argument('--editor_dir', type=str,   default=None)
-    parser.add_argument('--mols_refe',  type=str,   default=None)
     parser.add_argument('--mols_init',  type=str,   default=None)
+    parser.add_argument('--mols_refe',  type=str,   default='actives_gsk3b,jnk3.txt')
     parser.add_argument('--vocab',      type=str,   default='chembl')
     parser.add_argument('--vocab_size', type=int,   default=1000)
     parser.add_argument('--max_size',   type=int,   default=40)
     parser.add_argument('--num_path',   type=int,   default=1000)
-    parser.add_argument('--num_step',   type=int,   default=1000)
+    parser.add_argument('--num_step',   type=int,   default=5000)
     parser.add_argument('--num_runs',   type=int,   default=10)
     parser.add_argument('--log_every',  type=int,   default=1)
 
     parser.add_argument('--sampler',    type=str,   default='sa')
     parser.add_argument('--proposal',   type=str,   default='editor')
-    parser.add_argument('--objectives', type=str,   default='gsk3b,jnk3, qed,  sa')
+    parser.add_argument('--objectives', type=str,   default='gsk3b,jnk3,qed,sa')
     parser.add_argument('--score_wght', type=str,   default='  1.0, 1.0, 1.0, 1.0')
     parser.add_argument('--score_succ', type=str,   default='  0.5, 0.5, 0.6, .67')
     parser.add_argument('--score_clip', type=str,   default='  0.6, 0.6, 0.7, 0.7') # TODO
+    # parser.add_argument('--score_clip', type=str,   default='  1.0, 1.0, 1.0, 1.0')
     
     parser.add_argument('--lr',             type=float, default=3e-4)
     parser.add_argument('--dataset_size',   type=int,   default=50000)
@@ -102,17 +103,17 @@ if __name__ == '__main__':
 
         ### evaluator
         if config['mols_refe']: 
-            mols_refe = load_mols(config['data_dir'], config['mols_ref'])
+            mols_refe = load_mols(config['data_dir'], config['mols_refe'])
         else: mols_refe = []
+        evaluator = Evaluator(config, mols_refe)
+
+        ### sampler
         if config['mols_init']:
             mols = load_mols(config['data_dir'], config['mols_init'])
             mols = random.choices(mols, k=config['num_mols'])
             mols_init = mols[:config['num_mols']]
         else: mols_init = [
             Chem.MolFromSmiles('CC') for _ in range(config['num_mols'])]
-        evaluator = Evaluator(config, mols_refe, mols_init)
-
-        ### sampler
         if config['sampler'] == 're': sampler = Sampler_Recursive(config, scorer, proposal, evaluator)
         elif config['sampler'] == 'sa': sampler = Sampler_SA(config, scorer, proposal, evaluator)
         elif config['sampler'] == 'mh': sampler = Sampler_MH(config, scorer, proposal, evaluator)

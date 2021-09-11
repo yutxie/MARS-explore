@@ -16,20 +16,17 @@ from .datasets.utils import load_mols
 from .datasets.datasets import ImitationDataset, \
                                GraphClassificationDataset
 
-from .utils.chem import standardize_smiles
+from .utils.chem import standardize_smiles, fingerprint
 
 
 class Evaluator():
-    def __init__(self, config, mols_refe, mols_init):
+    def __init__(self, config, mols_refe):
         self.fps_refe = [fingerprint(mol) for mol in mols_refe]
 
+        self.fps_uniq = [] # for novelty optimization
         self.smiles_uniq = set()
-        for mol in mols_init:
-            smiles = standardize_smiles(mol)
-            if smiles not in self.smiles_uniq:
-                self.smiles_uniq.add(smiles)
 
-        self.fps_succ = []
+        self.fps_succ = [] # for novelty and diversity evaluation
         self.score_succ = {k: v for k, v in zip(config['objectives'], config['score_succ'])}
 
         self.N = 0
@@ -42,17 +39,20 @@ class Evaluator():
         self.N += len(mols)
 
         ### uniqueness
-        mols_uniq = []  # len() < n
+        fps_uniq   = [] # len() < n
         dicts_uniq = [] # len() < n
         for mol, score_dict in zip(mols, dicts):
             smiles = standardize_smiles(mol)
             if smiles not in self.smiles_uniq:
                 self.smiles_uniq.add(smiles)
-                mols_uniq.append(mol)
+
+                fp = fingerprint(mol)
+                fps_uniq.append(fp)
                 dicts_uniq.append(score_dict)
+        self.fps_uniq += fps_uniq
             
         ### success rate, novelty, and diversity
-        for mol, score_dict in zip(mols_uniq, dicts_uniq):
+        for fp, score_dict in zip(fps_uniq, dicts_uniq):
             all_success = True
             for k, v in score_dict.items():
                 if v >= self.score_succ[k]:
@@ -60,26 +60,27 @@ class Evaluator():
                 else: all_success = False
             
             if all_success:
-                fp = fingerprint(mols_uniq[i])
+                self.n_succ += 1
                 self.fps_succ.append(fp)
 
                 sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_refe)
+                if len(sims) == 0: sims = [0]
                 if max(sims) < 0.4: self.n_novl += 1
 
                 sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_succ[:-1])
                 self.similarity += sum(sims)
 
     def get_results(self):
+        n_uniq = len(self.smiles_uniq)
         scalars = {
-            'N': self.N,
-            'unique': 1. * len(self.smiles_uniq) / self.N,
-            'success': 1. * len(self.smiles_succ) / len(self.smiles_uniq),
-            'novelty': 1. * len(self.smiles_novl) / len(self.smiles_succ),
-            'diversity': 1. - self.similarity / self.N / (self.N-1) * 2
+            # 'N': self.N,
+            'unique'   : 1. *      n_uniq     / self.N,
+            'success'  : 1. * self.n_succ     /      n_uniq if n_uniq      > 0 else 0.,
+            'novelty'  : 1. * self.n_novl     / self.n_succ if self.n_succ > 0 else 0.,
+            'diversity': 1. - self.similarity / self.n_succ / (self.n_succ-1) * 2 if self.n_succ > 1 else 0.
         }
         succ_dict = {k : 1. * v / self.N for k, v in self.n_succ_dict.items()}
         return scalars, succ_dict
 
 
-def fingerprint(mol):
-    return AllChem.GetMorganFingerprintAsBitVect(mol, 3, 2048)
+

@@ -4,7 +4,7 @@ import argparse
 from tqdm import tqdm
 from rdkit import Chem, RDLogger
 
-from .utils import load_mols
+from .utils import load_mols, Vocab, load_vocab
 from ..utils.chem import break_bond, Arm, Skeleton
 
 lg = RDLogger.logger()
@@ -16,11 +16,15 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir',   type=str,   default='MARS/data')
     parser.add_argument('--mols_file',  type=str,   default='chembl.txt')
     parser.add_argument('--vocab_name', type=str,   default='chembl',)
+    parser.add_argument('--vocab_size', type=int,   default=1000)
     parser.add_argument('--max_size',   type=int,   default=10, help='max size of arm')
+    parser.add_argument('--func',       action='store_true')
     args = parser.parse_args()
 
     ### load data
+    print('loading molecules from the database...')
     mols = load_mols(args.data_dir, args.mols_file)
+    print('loaded %i mols' % len(mols))
 
     ### drop arms
     arms, cnts, smiles2idx = [], [], {}
@@ -38,45 +42,43 @@ if __name__ == '__main__':
                     tmp = arm
                     arm = Arm(skeleton.mol, skeleton.u, skeleton.bond_type)
                     skeleton = Skeleton(tmp.mol, tmp.v, tmp.bond_type)
+                if arm.mol.GetNumAtoms() > args.max_size: continue
 
                 # functional group check
-                mark = False
-                if not skeleton.mol.GetAtomWithIdx(
-                    skeleton.u).GetAtomicNum() == 6: continue
-                if arm.mol.GetNumAtoms() > args.max_size: continue
-                for atom in arm.mol.GetAtoms():
-                    if not atom.GetAtomicNum() == 6:
-                        mark = True
-                        break
-                for bond in arm.mol.GetBonds():
-                    if mark: break
-                    if bond.GetBondType() == \
-                        Chem.rdchem.BondType.DOUBLE or \
-                        bond.GetBondType() == \
-                        Chem.rdchem.BondType.TRIPLE:
-                        mark = True
-                        break
-                if not mark: continue
+                if args.func:
+                    mark = False
+                    if not skeleton.mol.GetAtomWithIdx( # connected with C
+                        skeleton.u).GetAtomicNum() == 6: continue
+                    for atom in arm.mol.GetAtoms(): # contain non-C atoms
+                        if not atom.GetAtomicNum() == 6:
+                            mark = True
+                            break
+                    for bond in arm.mol.GetBonds(): # contain non-single bonds
+                        if mark: break
+                        if bond.GetBondType() == \
+                            Chem.rdchem.BondType.DOUBLE or \
+                            bond.GetBondType() == \
+                            Chem.rdchem.BondType.TRIPLE:
+                            mark = True
+                            break
+                    if not mark: continue
 
                 smiles = Chem.MolToSmiles(arm.mol, rootedAtAtom=arm.v)
-                if smiles.startswith('CC'): continue
+                if args.func and smiles.startswith('CC'): continue
                 if smiles2idx.get(smiles) is None:
                     smiles2idx[smiles] = len(arms)
                     arms.append(arm)
                     cnts.append(1)
                 else: cnts[smiles2idx[smiles]] += 1
 
-    ### save arms
-    idx2smiles = {idx : smiles for smiles, idx in smiles2idx.items()}
-    indices = sorted(range(len(cnts)), key=lambda i: cnts[i], reverse=True)
-    arms = [arms[i] for i in indices]
-    cnts = [cnts[i] for i in indices]
-    vocab_dir = os.path.join(args.data_dir, 'vocab_%s' % args.vocab_name)
-    os.makedirs(vocab_dir, exist_ok=True)
-    with open(os.path.join(vocab_dir, 'arms.pkl'), 'wb') as f:
-        pickle.dump(arms, f)
-    with open(os.path.join(vocab_dir, 'arms.smiles'), 'w') as f:
-        for i, cnt in zip(indices, cnts):
-            smiles = idx2smiles[i]
-            f.write('%i\t%s\n' % (cnt, smiles))
+    ### save arms as a vocab
+    topk = sorted(range(len(cnts)), key=lambda k: cnts[k], reverse=True)[:args.vocab_size]
+    arms = [arms[i] for i in topk]
+    cnts = [cnts[i] for i in topk]
+    topk_set = set(topk)
+    smiles = [smi for smi, idx in smiles2idx.items() if idx in topk_set]
+    vocab = Vocab(arms, cnts, smiles)
+    vocab.save(args.data_dir, args.vocab_name)
+    vocab = load_vocab(args.data_dir, args.vocab_name, args.vocab_size)
+    
     

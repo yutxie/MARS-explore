@@ -7,22 +7,25 @@ from rdkit.Chem import Descriptors
 import rdkit.Chem.QED as QED
 import networkx as nx
 
-def get_score(objective, mol):
+from . import sa_scorer
+
+
+def get_score(obj, mol):
     try:
-        if objective == 'qed': 
+        if obj == 'qed': 
             return QED.qed(mol)
-        elif objective == 'sa': 
+        elif obj == 'sa': 
             x = sa_scorer.calculateScore(mol)
             return (10. - x) / 9. # normalized to [0, 1]
-        elif objective == 'mw': # molecular weight
+        elif obj == 'mw': # molecular weight
             return mw(mol)
-        elif objective == 'logp': # real number
+        elif obj == 'logp': # real number
             return Descriptors.MolLogP(mol)
-        elif objective == 'penalized_logp':
+        elif obj == 'penalized_logp':
             return penalized_logp(mol)
-        elif 'rand' in objective:
+        elif 'rand' in obj:
             raise NotImplementedError
-            # return rand_scorer.get_score(objective, mol)
+            # return rand_scorer.get_score(obj, mol)
         else: raise NotImplementedError
     except ValueError:
         return 0.
