@@ -83,8 +83,9 @@ def load_vocab(data_dir, vocab_name, vocab_size=1000):
 
     arms = []
     for mol, v, bond in zip(arm_mols, vs, bonds):
-        arms.append(Arm(mol, v, BOND_TYPES[bond]))
+        arms.append(Arm(mol, v, BOND_TYPES[bond-1]))
 
     vocab = Vocab(arms, cnts, smiles)
     print('loaded vocab of size %i' % len(vocab))
     return vocab
+

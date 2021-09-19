@@ -6,14 +6,15 @@ from .scorers import other_scorer
 from ..utils.chem import standardize_smiles, fingerprint
 
 class Scorer():
-    def __init__(self, config):
+    def __init__(self, config, fps_uniq):
         '''
         @params:
             config (dict): configurations
         '''
         self.objectives = config['objectives']
+        self.fps_uniq = fps_uniq
 
-    def get_scores(self, mols, fps_uniq=[]):
+    def get_scores(self, mols):
         '''
         @params:
             mols: molecules to estimate score
@@ -26,14 +27,14 @@ class Scorer():
         dicts = [{} for _ in mols]
         for obj in self.objectives:
             if obj.startswith('nov'):
-                N = len(fps_uniq)
+                N = len(self.fps_uniq)
                 if N == 0:
                     scores = [1. for _ in mols_valid]
                 else:
                     scores = []
                     fps = [fingerprint(mol) for mol in mols_valid]
                     for fp in fps:
-                        sims = DataStructs.BulkTanimotoSimilarity(fp, fps_uniq)
+                        sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_uniq)
                         if   obj.endswith('nn'): scores.append(1. - max(sims))
                         elif obj.endswith('ad'): scores.append(1. - sum(sims) * 1. / N)
                         else: raise NotImplementedError

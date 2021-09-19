@@ -40,8 +40,11 @@ class GraphClassificationDataset(GraphDataset):
         labels = torch.tensor(labels).long()
         return g, labels
 
-class ImitationDataset(GraphDataset):
-    def __init__(self, graphs, edits):
+class GraphEditingDataset(GraphDataset):
+
+    def __init__(self, graphs=[], 
+        edits={k : [] for k in ['act', 'del', 'add', 'arm']}
+    ):
         '''
         @params:
             graphs: DGLGraphs of molecules
@@ -57,23 +60,27 @@ class ImitationDataset(GraphDataset):
         assert len(graphs) == len(edits['act'])
 
     def __getitem__(self, index):
-        targ = {}
+        edit = {}
         for key in self.edits.keys():
-            targ[key] = self.edits[key][index]
-        return self.graphs[index], targ
+            edit[key] = self.edits[key][index]
+        return self.graphs[index], edit
+
+    def subset(self, indices):
+        graphs = []
+        edits = {k : [] for k in ['act', 'del', 'add', 'arm']}
+        for i in indices:
+            graph, edit = self[i]
+            graphs.append(graph)
+            for key in edits.keys():
+                edits[key].append(edit[key])
+        dataset = GraphEditingDataset(graphs, edits)
+        return dataset
     
     def merge_(self, dataset):
-        if not isinstance(dataset, ImitationDataset):
-            dataset = ImitationDataset.reconstruct(dataset)
+        assert isinstance(dataset, GraphEditingDataset)
         self.graphs += dataset.graphs
         for key in self.edits.keys():
             self.edits[key] += dataset.edits[key]
-        
-    @staticmethod
-    def reconstruct(dataset):
-        graphs, edits = ImitationDataset.collate_fn(
-            [item for item in dataset], tensorize=False)
-        return ImitationDataset(graphs, edits)
 
     @staticmethod
     def collate_fn(batch, tensorize=True):

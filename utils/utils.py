@@ -33,6 +33,14 @@ class Recorder():
             metric2avg[metric] = avg
         return metric2avg
     
+def print_mol(mol):
+    try:
+        mol = standardize_smiles(mol)
+        mol = Chem.RemoveHs(mol)
+        smiles = Chem.MolToSmiles(mol)
+        return smiles
+    except Exception:
+        return None
     
 def print_mols(run_dir, step, mols, scores, dicts):
     path = os.path.join(run_dir, 'mols.txt')
@@ -41,17 +49,15 @@ def print_mols(run_dir, step, mols, scores, dicts):
         names = list(dicts[0].keys())
         f.write('score\t%s\tsmiles\n' % '\t'.join(names))
         for i, mol in enumerate(mols):
-            try:
+            smiles = print_mol(mol)
+            if smiles is not None:
                 score = scores[i]
-                mol = standardize_smiles(mol)
-                mol = Chem.RemoveHs(mol)
-                smiles = Chem.MolToSmiles(mol)
                 target_scores = [dicts[i][name] for name in names]
-            except Exception:
+            else:
                 score = 0. 
                 smiles = '[INVALID]'
-                assert False
                 target_scores = [0. for _ in names]
+                assert False
             target_scores = ['%f' % _ for _ in target_scores]
             f.write('%f\t%s\t%s\n' % (score, '\t'.join(target_scores), smiles))
 

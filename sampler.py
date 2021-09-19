@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from .utils.train import train
 from .utils.utils import print_mols
-from .datasets.datasets import ImitationDataset
+from .datasets.datasets import GraphEditingDataset
 
 class Sampler():
     def __init__(self, config, scorer, proposal, evaluator):
@@ -22,19 +22,18 @@ class Sampler():
         
         ### for sampling
         self.step = None
-        self.num_mols = config['num_mols']
+        self.num_path = config['num_path']
         self.num_step = config['num_step']
         self.log_every = config['log_every']
-        
-        self.score_wght = {k: v for k, v in zip(config['objectives'], config['score_wght'])}
-        self.score_clip = {k: v for k, v in zip(config['objectives'], config['score_clip'])}
+        self.score_wght = config['score_wght']
+        self.score_clip = config['score_clip']
 
         ### for editing and training
         self.train = config['train']
         self.last_avg_size = None
         self.batch_size = config['batch_size']
         if self.train:
-            self.dataset = None
+            self.dataset = GraphEditingDataset()
             self.max_dataset_size = config['dataset_size']
             self.optimizer = torch.optim.Adam(self.proposal.editor.parameters(), lr=config['lr'])
 
@@ -67,15 +66,17 @@ class Sampler():
         self.last_avg_size = avg_size
         
         ### evaluation results
-        scalars, succ_dict = self.evaluator.get_results()
+        evaluation, coverage, succ_dict = self.evaluator.get_results()
 
         ### logging and writing tensorboard
         log.info('Step: {:02d},\tMean Avg Score: {:.7f}'.format(step, mean_avg_score))
-        log.info('\t%s' % str(scalars))
+        log.info('\t%s' % str(evaluation))
+        log.info('\t%s' % str(coverage))
         log.info('\t%s' % str(succ_dict))
         self.writer.add_scalar('mean_avg_score', mean_avg_score, step)
         self.writer.add_scalar('avg_size', avg_size, step)
-        self.writer.add_scalars('scalars', scalars, step)
+        self.writer.add_scalars('evaluation', evaluation, step)
+        self.writer.add_scalars('coverage', coverage, step)
         self.writer.add_scalars('succ_dict', succ_dict, step)
         self.writer.add_histogram('acc_rates', torch.tensor(acc_rates), step)
         self.writer.add_histogram('avg_scores', torch.tensor(avg_scores), step)
@@ -131,36 +132,37 @@ class Sampler():
             
             acc_rates = self.acc_rates(new_scores, old_scores, pops)
             acc_rates = [min(1., max(0., A)) for A in acc_rates]
-            for i in range(self.num_mols):
+            updated_mols, updated_dicts = [], []
+            for i in range(self.num_path):
                 A = acc_rates[i] # A = p(x') * g(x|x') / p(x) / g(x'|x)
                 if random.random() > A: continue
                 old_mols[i] = new_mols[i]
                 old_scores[i] = new_scores[i]
                 old_dicts[i] = new_dicts[i]
+                updated_mols.append(new_mols[i])
+                updated_dicts.append(new_dicts[i])
 
-            self.evaluator.update(old_mols, old_dicts)
+            self.evaluator.update(updated_mols, updated_dicts)
             if step % self.log_every == 0:
                 self.record(step, old_mols, old_dicts, acc_rates)
 
             ### train editor
             if self.train:
                 dataset = self.proposal.dataset
-                dataset = data.Subset(dataset, indices)
-                if self.dataset: 
-                    self.dataset.merge_(dataset)
-                else: self.dataset = ImitationDataset.reconstruct(dataset)
+                dataset = dataset.subset(indices)
+                self.dataset.merge_(dataset)
+                
                 n_sample = len(self.dataset)
                 if n_sample > 2 * self.max_dataset_size:
                     indices = [i for i in range(n_sample)]
                     random.shuffle(indices)
                     indices = indices[:self.max_dataset_size]
-                    self.dataset = data.Subset(self.dataset, indices)
-                    self.dataset = ImitationDataset.reconstruct(self.dataset)
+                    self.dataset = self.dataset.subset(indices)
                 batch_size = int(self.batch_size * 20 / self.last_avg_size)
-                log.info('formed a imitation dataset of size %i' % len(self.dataset))
+                log.info('formed a graph editing dataset of size %i' % len(self.dataset))
                 loader = data.DataLoader(self.dataset,
                     batch_size=batch_size, shuffle=True,
-                    collate_fn=ImitationDataset.collate_fn
+                    collate_fn=GraphEditingDataset.collate_fn
                 )
                 
                 train(
@@ -181,6 +183,30 @@ class Sampler():
                 if not self.proposal.editor.device == \
                     torch.device('cpu'):
                     torch.cuda.empty_cache()
+
+
+class Sampler_Recursive(Sampler):
+    def __init__(self, *args):
+        super().__init__(*args)
+        
+    def acc_rates(self, *args):
+        acc_rates = []
+        for i in range(self.num_path):
+            A = 1.
+            acc_rates.append(A)
+        return acc_rates
+
+
+class Sampler_Improve(Sampler):
+    def __init__(self, *args):
+        super().__init__(*args)
+
+    def acc_rates(self, new_scores, old_scores, *args):
+        acc_rates = []
+        for i in range(self.num_path):
+            A = new_scores[i] > old_scores[i]
+            acc_rates.append(A)
+        return acc_rates 
 
 
 class Sampler_SA(Sampler):
@@ -210,11 +236,11 @@ class Sampler_SA(Sampler):
         self.T = max(self.T, 1e-2)
         return self.T
         
-    def acc_rates(self, new_scores, old_scores, pops):
+    def acc_rates(self, new_scores, old_scores, *args):
         acc_rates = []
         T = self.update_T()
         # T = 1. / (4. * math.log(self.step + 8.))
-        for i in range(self.num_mols):
+        for i in range(self.num_path):
             # A = min(1., math.exp(1. * (new_scores[i] - old_scores[i]) / T))
             A = min(1., 1. * new_scores[i] / max(old_scores[i], 1e-6))
             A = min(1., A ** (1. / T))
@@ -229,21 +255,9 @@ class Sampler_MH(Sampler):
         
     def acc_rates(self, new_scores, old_scores, pops):
         acc_rates = []
-        for i in range(self.num_mols):
+        for i in range(self.num_path):
             old_score = max(old_scores[i], 1e-5)
             A = ((new_scores[i] / old_score) ** self.power) * pops[i]
-            acc_rates.append(A)
-        return acc_rates
-
-
-class Sampler_Recursive(Sampler):
-    def __init__(self, *args):
-        super().__init__(*args)
-        
-    def acc_rates(self, new_scores, old_scores, pops):
-        acc_rates = []
-        for i in range(self.num_mols):
-            A = 1.
             acc_rates.append(A)
         return acc_rates
 

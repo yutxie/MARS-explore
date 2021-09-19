@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from torch.utils.data import DataLoader
 
 from ..datasets.utils import load_mols, load_vocab
-from ..datasets.datasets import GraphDataset, ImitationDataset
+from ..datasets.datasets import GraphDataset, GraphEditingDataset
 from ..utils.utils import sample_idx
 from ..utils.chem import mol_to_dgl, check_validity, \
                           Skeleton, break_bond, combine
@@ -173,9 +173,7 @@ class Proposal(ABC):
             prob_act_, prob_del_, prob_add_, \
                 prob_arm_ = self.get_prob(graphs_)
         for i, new_mol in enumerate(new_mols):
-            if new_mol is None:
-                new_mols[i] = mols[i]
-                continue
+            if new_mol is None: continue
             if backward:
                 action_ = actions_[i]
                 del_idx_ = del_idxs_[i]
@@ -197,7 +195,7 @@ class Proposal(ABC):
             'add': add_idxs,
             'arm': arm_idxs
         }
-        self.dataset = ImitationDataset(graphs, edits)
+        self.dataset = GraphEditingDataset(graphs, edits)
         return new_mols, pops
 
 

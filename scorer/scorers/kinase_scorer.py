@@ -19,6 +19,7 @@ def load_model(task):
         models[task] = pickle.load(f, encoding='iso-8859-1')
 
 def get_scores(task, mols):
+    if len(mols) == 0: return []
     model = models.get(task)
     if model is None:
         load_model(task)

@@ -11,9 +11,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 from .utils.train import train
 from .utils.chem import mol_to_dgl
-from .utils.utils import print_mols
+from .utils.utils import print_mol
 from .datasets.utils import load_mols
-from .datasets.datasets import ImitationDataset, \
+from .datasets.sampler import StreamSampler
+from .datasets.datasets import GraphEditingDataset, \
                                GraphClassificationDataset
 
 from .utils.chem import standardize_smiles, fingerprint
@@ -22,18 +23,18 @@ from .utils.chem import standardize_smiles, fingerprint
 class Evaluator():
     def __init__(self, config, mols_refe):
         self.fps_refe = [fingerprint(mol) for mol in mols_refe]
-
-        self.fps_uniq = [] # for novelty optimization
+        self.fps_uniq = StreamSampler(S=5000) # for novelty optimization
+        self.fps_succ = StreamSampler(S=5000) # for novelty and diversity evaluation
+        self.fps_circ = []                    # for coverage
         self.smiles_uniq = set()
-
-        self.fps_succ = [] # for novelty and diversity evaluation
-        self.score_succ = {k: v for k, v in zip(config['objectives'], config['score_succ'])}
+        self.score_succ = config['score_succ']
 
         self.N = 0
         self.n_succ = 0
         self.n_novl = 0
         self.similarity = 0. # unnormalized
         self.n_succ_dict = {k: 0 for k in config['objectives']} 
+
 
     def update(self, mols, dicts):
         self.N += len(mols)
@@ -42,45 +43,59 @@ class Evaluator():
         fps_uniq   = [] # len() < n
         dicts_uniq = [] # len() < n
         for mol, score_dict in zip(mols, dicts):
-            smiles = standardize_smiles(mol)
+            mol = standardize_smiles(mol)
+            smiles = print_mol(mol)
+            if smiles is None: continue
             if smiles not in self.smiles_uniq:
                 self.smiles_uniq.add(smiles)
 
                 fp = fingerprint(mol)
                 fps_uniq.append(fp)
                 dicts_uniq.append(score_dict)
-        self.fps_uniq += fps_uniq
+        self.fps_uniq.update(fps_uniq)
             
         ### success rate, novelty, and diversity
         for fp, score_dict in zip(fps_uniq, dicts_uniq):
             all_success = True
             for k, v in score_dict.items():
                 if v >= self.score_succ[k]:
-                    self.n_succ_dict[k] += 1
+                    self.n_succ_dict[k] += 1.
                 else: all_success = False
             
+            # success
             if all_success:
-                self.n_succ += 1
-                self.fps_succ.append(fp)
-
+                # novelty
                 sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_refe)
                 if len(sims) == 0: sims = [0]
                 if max(sims) < 0.4: self.n_novl += 1
 
-                sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_succ[:-1])
-                self.similarity += sum(sims)
+                # diversity
+                sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_succ)
+                self.similarity += sum(sims) / len(self.fps_succ) * self.n_succ \
+                    if len(sims) > 0 else 0.
+
+                # coverage
+                sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_circ)
+                if len(sims) == 0: sims = [0]
+                if max(sims) < 0.4: self.fps_circ.append(fp)
+
+                self.n_succ += 1
+                self.fps_succ.update([fp])
+
 
     def get_results(self):
         n_uniq = len(self.smiles_uniq)
-        scalars = {
-            # 'N': self.N,
+        evaluation = {
             'unique'   : 1. *      n_uniq     / self.N,
             'success'  : 1. * self.n_succ     /      n_uniq if n_uniq      > 0 else 0.,
             'novelty'  : 1. * self.n_novl     / self.n_succ if self.n_succ > 0 else 0.,
             'diversity': 1. - self.similarity / self.n_succ / (self.n_succ-1) * 2 if self.n_succ > 1 else 0.
         }
-        succ_dict = {k : 1. * v / self.N for k, v in self.n_succ_dict.items()}
-        return scalars, succ_dict
-
-
-
+        coverage = {
+            'n_div'  : self.n_succ * evaluation['diversity'],
+            'n_ess'  : self.n_succ / (1. + (self.n_succ-1.) * (1. - evaluation['diversity'])) \
+                        if self.n_succ > 0 else 0.,
+            'n_circ' : len(self.fps_circ)
+        }
+        succ_dict = {k : 1. * v / n_uniq for k, v in self.n_succ_dict.items()}
+        return evaluation, coverage, succ_dict
