@@ -2,7 +2,7 @@ import os
 import torch
 import logging as log
 
-from ..utils.utils import Recorder
+from .logger import Recorder
 
 
 def evaluate(model, loader, metrics=['loss']):

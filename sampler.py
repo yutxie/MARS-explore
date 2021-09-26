@@ -8,25 +8,24 @@ from torch.utils import data
 from torch.utils.tensorboard import SummaryWriter
 
 from .utils.train import train
-from .utils.utils import print_mols
+from .utils.logger import MolsPrinter
 from .datasets.datasets import GraphEditingDataset
 
+
 class Sampler():
-    def __init__(self, config, scorer, proposal, evaluator):
-        self.proposal = proposal
+    def __init__(self, config, run_dir, scorer, proposal, evaluator):
+        self.run_dir = run_dir
         self.scorer = scorer
+        self.proposal = proposal
         self.evaluator = evaluator
-        
-        self.writer = None
-        self.run_dir = None
+        self.writer = SummaryWriter(log_dir=run_dir)
+        self.mols_printer = MolsPrinter(run_dir)
         
         ### for sampling
         self.step = None
         self.num_path = config['num_path']
         self.num_step = config['num_step']
         self.log_every = config['log_every']
-        self.score_wght = config['score_wght']
-        self.score_clip = config['score_clip']
 
         ### for editing and training
         self.train = config['train']
@@ -37,53 +36,42 @@ class Sampler():
             self.max_dataset_size = config['dataset_size']
             self.optimizer = torch.optim.Adam(self.proposal.editor.parameters(), lr=config['lr'])
 
-    def average_scores(self, dicts):
-        '''
-        @params:
-            dicts (list): list of score dictionaries
-        @return:
-            avg_scores (list): sum of property scores of each molecule after clipping
-        '''
-        avg_scores = []
-        score_norm = sum(self.score_wght.values())
-        for score_dict in dicts:
-            avg_score = 0.
-            for k, v in score_dict.items():
-                if self.score_clip[k] > 0.:
-                    v = min(v, self.score_clip[k])
-                avg_score += self.score_wght[k] * v
-            avg_score /= score_norm
-            avg_score = max(avg_score, 0.)
-            avg_scores.append(avg_score)
-        return avg_scores
-
-    def record(self, step, mols, dicts, acc_rates):
-        ### average score and size
-        avg_scores = self.average_scores(dicts)
-        mean_avg_score = 1. * sum(avg_scores) / len(avg_scores)
+    def record(self, step, mols, w_scores, dicts, acc_rates):
+        ### average size
         sizes = [mol.GetNumAtoms() for mol in mols]
         avg_size = sum(sizes) / len(mols)
         self.last_avg_size = avg_size
+
+        ### average score
+        avg_w_score = 1. * sum(w_scores) / len(w_scores)      
+        avg_score_dict = {}
+        for k in dicts[0].keys():
+            v = [dictt[k] for dictt in dicts]
+            avg_score_dict[k] = sum(v) / len(v)
         
         ### evaluation results
         evaluation, coverage, succ_dict = self.evaluator.get_results()
 
         ### logging and writing tensorboard
-        log.info('Step: {:02d},\tMean Avg Score: {:.7f}'.format(step, mean_avg_score))
-        log.info('\t%s' % str(evaluation))
-        log.info('\t%s' % str(coverage))
-        log.info('\t%s' % str(succ_dict))
-        self.writer.add_scalar('mean_avg_score', mean_avg_score, step)
+        log.info('=' * 20 + 'Step: {:02d}:'.format(step))
+        log.info('\tAvg weighted score: ' + str(avg_w_score))
+        log.info('\tAvg molecule size: ' + str(avg_size))
+        log.info('\tEvaluations: ' + str(evaluation))
+        log.info('\tCoverage: ' + str(coverage))
+        log.info('\tSuccess rate: ' + str(succ_dict))
+        log.info('\tAvg score: ' + str(avg_score_dict))
+        self.writer.add_scalar('avg_w_score', avg_w_score, step)
         self.writer.add_scalar('avg_size', avg_size, step)
         self.writer.add_scalars('evaluation', evaluation, step)
         self.writer.add_scalars('coverage', coverage, step)
         self.writer.add_scalars('succ_dict', succ_dict, step)
+        self.writer.add_scalars('avg_score_dict', avg_score_dict, step)
         self.writer.add_histogram('acc_rates', torch.tensor(acc_rates), step)
-        self.writer.add_histogram('avg_scores', torch.tensor(avg_scores), step)
+        self.writer.add_histogram('w_scores', torch.tensor(w_scores), step)
         for k in dicts[0].keys():
             scores = [score_dict[k] for score_dict in dicts]
             self.writer.add_histogram(k, torch.tensor(scores), step)
-        print_mols(self.run_dir, step, mols, avg_scores, dicts)
+        self.mols_printer.print_mols(step, mols, w_scores, dicts)
         
         ### early stop
         # TODO
@@ -98,28 +86,25 @@ class Sampler():
         '''
         raise NotImplementedError
 
-    def sample(self, run_dir, mols_init):
+    def sample(self, mols_init):
         '''
         sample molecules from initial ones
         @params:
             mols_init : initial molecules
         '''
-        self.run_dir = run_dir
-        self.writer = SummaryWriter(log_dir=run_dir)
         
         ### sample
         old_mols = [mol for mol in mols_init]
-        old_dicts = self.scorer.get_scores(old_mols)
-        old_scores = self.average_scores(old_dicts)
+        old_scores, old_dicts = self.scorer.get_scores(old_mols)
         acc_rates = [0. for _ in old_mols]
         self.evaluator.update(old_mols, old_dicts)
-        self.record(-1, old_mols, old_dicts, acc_rates)
+        self.record(-1, old_mols, old_scores, old_dicts, acc_rates)
 
         for step in range(self.num_step):
             self.step = step
-            new_mols, pops = self.proposal.propose(old_mols) 
-            new_dicts = self.scorer.get_scores(new_mols)
-            new_scores = self.average_scores(new_dicts)
+            new_mols, pops = self.proposal.propose(old_mols)
+            new_scores, new_dicts = self.scorer.get_scores(new_mols)
+            old_scores, old_dicts = self.scorer.get_scores(old_mols, old_dicts)
             
             indices = [i for i in range(len(old_mols)) if new_scores[i] > old_scores[i]]
             with open(os.path.join(self.run_dir, 'edits.txt'), 'a') as f:
@@ -144,7 +129,7 @@ class Sampler():
 
             self.evaluator.update(updated_mols, updated_dicts)
             if step % self.log_every == 0:
-                self.record(step, old_mols, old_dicts, acc_rates)
+                self.record(step, old_mols, old_scores, old_dicts, acc_rates)
 
             ### train editor
             if self.train:

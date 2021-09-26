@@ -16,7 +16,7 @@ BOND_TYPES = [
         Chem.rdchem.BondType.AROMATIC, None]
 
 ### validity
-def standardize_smiles(mol):
+def standardize_mol(mol):
     try:
         smiles = Chem.MolToSmiles(mol)
         mol = Chem.MolFromSmiles(smiles)
@@ -122,7 +122,7 @@ def combine(skeleton, arm):
 
 
 ### data transformation
-def fingerprint(mol, r=3, nBits=2048):
+def mol_to_fp(mol, r=3, nBits=2048):
     return AllChem.GetMorganFingerprintAsBitVect(mol, r, nBits)
     
 def mol_to_dgl(mol):
@@ -207,3 +207,12 @@ def mol_to_dgl(mol):
     bond_feats = zinc_edges(mol, g.edges())
     g.edata.update(bond_feats)
     return g
+
+def mol_to_smiles(mol):
+    try:
+        mol = standardize_mol(mol)
+        mol = Chem.RemoveHs(mol)
+        smiles = Chem.MolToSmiles(mol)
+        return smiles
+    except Exception:
+        return None

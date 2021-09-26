@@ -9,20 +9,15 @@ from rdkit import Chem, DataStructs
 from torch.utils import data
 from torch.utils.tensorboard import SummaryWriter
 
-from .utils.train import train
-from .utils.chem import mol_to_dgl
-from .utils.utils import print_mol
+from .utils.chem import standardize_mol, mol_to_fp, mol_to_smiles
 from .datasets.utils import load_mols
 from .datasets.sampler import StreamSampler
-from .datasets.datasets import GraphEditingDataset, \
-                               GraphClassificationDataset
-
-from .utils.chem import standardize_smiles, fingerprint
 
 
 class Evaluator():
     def __init__(self, config, mols_refe):
-        self.fps_refe = [fingerprint(mol) for mol in mols_refe]
+        self.objectives = config['objectives']
+        self.fps_refe = [mol_to_fp(mol) for mol in mols_refe]
         self.fps_uniq = StreamSampler(S=5000) # for novelty optimization
         self.fps_succ = StreamSampler(S=5000) # for novelty and diversity evaluation
         self.fps_circ = []                    # for coverage
@@ -43,13 +38,13 @@ class Evaluator():
         fps_uniq   = [] # len() < n
         dicts_uniq = [] # len() < n
         for mol, score_dict in zip(mols, dicts):
-            mol = standardize_smiles(mol)
-            smiles = print_mol(mol)
+            mol = standardize_mol(mol)
+            smiles = mol_to_smiles(mol)
             if smiles is None: continue
             if smiles not in self.smiles_uniq:
                 self.smiles_uniq.add(smiles)
 
-                fp = fingerprint(mol)
+                fp = mol_to_fp(mol)
                 fps_uniq.append(fp)
                 dicts_uniq.append(score_dict)
         self.fps_uniq.update(fps_uniq)
@@ -57,7 +52,9 @@ class Evaluator():
         ### success rate, novelty, and diversity
         for fp, score_dict in zip(fps_uniq, dicts_uniq):
             all_success = True
-            for k, v in score_dict.items():
+            # for k, v in score_dict.items():
+            for k in self.objectives:
+                v = score_dict[k]
                 if v >= self.score_succ[k]:
                     self.n_succ_dict[k] += 1.
                 else: all_success = False

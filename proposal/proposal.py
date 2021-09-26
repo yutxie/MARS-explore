@@ -93,7 +93,9 @@ class Proposal(ABC):
         actions_, del_idxs_, add_idxs_, arm_idxs_ = [], [], [], []
         for i, mol in enumerate(mols):
             action = sample_idx(prob_act[i])
+            print('sample del idx')
             del_idx = sample_idx(prob_del[i])
+            assert False
             add_idx = sample_idx(prob_add[i])
             arm_idx = sample_idx(prob_arm[i][add_idx])
             actions.append(action)

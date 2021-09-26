@@ -9,7 +9,7 @@
 #
 # several small modifications to the original paper are included
 # particularly slightly different formula for marocyclic penalty
-# and taking into account also molecule symmetry (fingerprint density)
+# and taking into account also molecule symmetry (mol_to_fp density)
 #
 # for a set of 10k diverse molecules the agreement between the original method
 # as implemented in PipelinePilot and this implementation is r2 = 0.97
@@ -55,7 +55,7 @@ def calculateScore(m):
 
     # fragment score
     fp = rdMolDescriptors.GetMorganFingerprint(
-        m, 2  # <- 2 is the *radius* of the circular fingerprint
+        m, 2  # <- 2 is the *radius* of the circular mol_to_fp
     )
     fps = fp.GetNonzeroElements()
     score1 = 0.

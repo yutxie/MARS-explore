@@ -114,9 +114,9 @@ if __name__ == '__main__':
             mols_init = mols[:config['num_path']]
         else: mols_init = [
             Chem.MolFromSmiles('CC') for _ in range(config['num_path'])]
-        if   config['sampler'] == 're': sampler = Sampler_Recursive(config, scorer, proposal, evaluator)
-        elif config['sampler'] == 'im': sampler = Sampler_Improve(config, scorer, proposal, evaluator)
-        elif config['sampler'] == 'sa': sampler = Sampler_SA(config, scorer, proposal, evaluator)
-        elif config['sampler'] == 'mh': sampler = Sampler_MH(config, scorer, proposal, evaluator)
+        if   config['sampler'] == 're': sampler = Sampler_Recursive(config, run_dir, scorer, proposal, evaluator)
+        elif config['sampler'] == 'im': sampler = Sampler_Improve(config, run_dir, scorer, proposal, evaluator)
+        elif config['sampler'] == 'sa': sampler = Sampler_SA(config, run_dir, scorer, proposal, evaluator)
+        elif config['sampler'] == 'mh': sampler = Sampler_MH(config, run_dir, scorer, proposal, evaluator)
         else: raise NotImplementedError
-        sampler.sample(run_dir, mols_init)
+        sampler.sample(mols_init)
