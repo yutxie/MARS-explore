@@ -34,27 +34,29 @@ class Recorder():
 
 class MolsPrinter():
     def __init__(self, run_dir):
-        self.run_dir = run_dir
+        self.path = os.path.join(run_dir, 'mols.csv')
         self.smiles_uniq = set()
 
+    def print_head(self, dicts):
+        names = list(dicts[0].keys())
+        with open(self.path, 'a') as f:
+            f.write('Step,Score,%s,SMILES\n' % ','.join(names))
+
     def print_mols(self, step, mols, scores, dicts):
-        path = os.path.join(self.run_dir, 'mols.txt')
-        with open(path, 'a') as f:
-            f.write('molecules obtained at step %i\n' % step)
-            names = list(dicts[0].keys())
-            f.write('#\tscore\t%s\tsmiles\n' % '\t'.join(names))
+        if step == -1: self.print_head(dicts)
+        names = list(dicts[0].keys())
+        with open(self.path, 'a') as f:
             for i, mol in enumerate(mols):
                 smiles = mol_to_smiles(mol)
                 if smiles in self.smiles_uniq: continue
                 self.smiles_uniq.add(smiles)
                 if smiles is not None:
                     score = scores[i]
-                    target_scores = [dicts[i][name] for name in names]
-                else:
-                    score = 0. 
-                    smiles = '[INVALID]'
-                    target_scores = [0. for _ in names]
-                    assert False
-                target_scores = ['%f' % _ for _ in target_scores]
-                f.write('%i\t%f\t%s\t%s\n' % (
-                    i, score, '\t'.join(target_scores), smiles))
+                    prop_scores = [dicts[i][name] for name in names]
+                else: assert False
+                    # score = 0. 
+                    # smiles = '[INVALID]'
+                    # prop_scores = [0. for _ in names]
+                prop_scores = ['%f' % _ for _ in prop_scores]
+                f.write('%i,%f,%s,%s\n' % (
+                    step, score, ','.join(prop_scores), smiles))

@@ -80,22 +80,16 @@ class Proposal(ABC):
             mols : molecules to edit
         @return:
             new_mols     : proposed new molecules
-            pops         : transition probability p over p for each proposal
         '''
-        ### forward proposal: g(x|x')
-        pops = [1. for _ in mols]
         graphs = [mol_to_dgl(mol) for mol in mols]
         prob_act, prob_del, prob_add, \
             prob_arm = self.get_prob(graphs)
         
-        new_mols, graphs_ = [], [] # var_: for computing pops
+        new_mols = []
         actions,  del_idxs,  add_idxs,  arm_idxs  = [], [], [], []
-        actions_, del_idxs_, add_idxs_, arm_idxs_ = [], [], [], []
         for i, mol in enumerate(mols):
             action = sample_idx(prob_act[i])
-            print('sample del idx')
             del_idx = sample_idx(prob_del[i])
-            assert False
             add_idx = sample_idx(prob_add[i])
             arm_idx = sample_idx(prob_arm[i][add_idx])
             actions.append(action)
@@ -120,12 +114,6 @@ class Proposal(ABC):
                         old_smiles = Chem.MolToSmiles(
                             old_arm.mol, rootedAtAtom=old_arm.v)
                         new_g = mol_to_dgl(new_mol)
-                        action_ = 1 # backward: add
-                        del_idx_ = None
-                        add_idx_ = skeleton.u
-                        arm_idx_ = self.vocab.smiles2idx.get(old_smiles)
-                        pops[i] *= prob_act[i][action]
-                        pops[i] *= prob_del[i][del_idx]
                 else: not_change = True
 
             elif action == 1: # add
@@ -142,54 +130,11 @@ class Proposal(ABC):
                         v = skeleton.mol.GetNumAtoms() + new_arm.v
                         u = new_g.all_edges()[0] == u
                         v = new_g.all_edges()[1] == v
-                        action_ = 0 # backward: del
-                        del_idx_ = (u * v).long().argmax().item()
-                        add_idx_ = None
-                        arm_idx_ = None
-                        pops[i] *= prob_act[i][action]
-                        pops[i] *= prob_add[i][add_idx]
-                        pops[i] *= prob_arm[i][add_idx][arm_idx]
                 else: not_change = True
             else: raise NotImplementedError
 
-            if not_change:
-                new_mol = None
-                if backward:
-                    new_g = graphs[i] # placeholder
-                    action_ = None
-                    del_idx_ = None
-                    add_idx_ = None
-                    arm_idx_ = None
-                    pops[i] = 0.
-
+            if not_change: new_mol = None
             new_mols.append(new_mol)
-            if backward:
-                graphs_.append(new_g)
-                actions_.append(action_)
-                del_idxs_.append(del_idx_)
-                add_idxs_.append(add_idx_)
-                arm_idxs_.append(arm_idx_)
-
-        ### backward proposal: g(x'|x)
-        if backward:
-            prob_act_, prob_del_, prob_add_, \
-                prob_arm_ = self.get_prob(graphs_)
-        for i, new_mol in enumerate(new_mols):
-            if new_mol is None: continue
-            if backward:
-                action_ = actions_[i]
-                del_idx_ = del_idxs_[i]
-                add_idx_ = add_idxs_[i]
-                arm_idx_ = arm_idxs_[i]
-                if action_ == 0: # del
-                    pops[i] *= prob_act_[i][action_]
-                    pops[i] *= prob_del_[i][del_idx_]
-                elif action_ == 1: # add
-                    pops[i] *= prob_act_[i][action_]
-                    pops[i] *= prob_add_[i][add_idx_]
-                    if arm_idx_ is None: pops[i] *= 0.
-                    else: pops[i] *= prob_arm_[i][add_idx_][arm_idx_]
-                else: raise NotImplementedError
 
         edits = {
             'act': actions,
@@ -198,7 +143,7 @@ class Proposal(ABC):
             'arm': arm_idxs
         }
         self.dataset = GraphEditingDataset(graphs, edits)
-        return new_mols, pops
+        return new_mols
 
 
 class Proposal_Editor(Proposal):

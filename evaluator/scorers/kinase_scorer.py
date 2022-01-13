@@ -9,7 +9,7 @@ lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)
 
 
-ROOT_DIR = 'MARS/scorer/scorers'
+ROOT_DIR = 'MARS/evaluator/scorers'
 TASKS = ['gsk3b', 'jnk3']
 SPLITS = ['val', 'dev']
 

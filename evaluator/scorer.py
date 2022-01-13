@@ -6,7 +6,7 @@ from .scorers import other_scorer
 from ..utils.chem import standardize_mol, mol_to_fp
 
 class Scorer():
-    def __init__(self, config, fps_uniq):
+    def __init__(self, config):
         '''
         @params:
             config (dict): configurations
@@ -14,7 +14,6 @@ class Scorer():
         self.objectives = config['objectives']
         self.score_wght = config['score_wght']
         self.score_clip = config['score_clip']
-        self.fps_uniq = fps_uniq
 
     def weighted_scores(self, dicts):
         '''
@@ -50,24 +49,9 @@ class Scorer():
             else [{} for _ in mols]
 
         objectives = set(self.objectives)
-        objectives.update(['nov_nn', 'nov_ad'])
         for obj in objectives:
-            if old_dicts is not None and \
-                not obj.startswith('nov'): continue
+            if old_dicts is not None: continue
 
-            if obj.startswith('nov'):
-                N = len(self.fps_uniq)
-                if N == 0:
-                    scores = [1. for _ in mols_valid]
-                else:
-                    scores = []
-                    fps = [mol_to_fp(mol) for mol in mols_valid]
-                    for fp in fps:
-                        sims = DataStructs.BulkTanimotoSimilarity(fp, self.fps_uniq)
-                        if   obj.endswith('nn'): scores.append(1. - max(sims))
-                        elif obj.endswith('ad'): scores.append(1. - sum(sims) * 1. / N)
-                        else: raise NotImplementedError
-                
             elif obj == 'jnk3' or \
                  obj == 'gsk3b':
                 scores = kinase_scorer.get_scores(obj, mols_valid)

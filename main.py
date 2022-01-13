@@ -10,11 +10,12 @@ from tqdm import tqdm
 from rdkit import Chem, RDLogger
 
 from .datasets.utils import load_mols
-from .scorer.scorer import Scorer
-from .evaluator import Evaluator
+from .evaluator.scorer import Scorer
+from .evaluator.evaluator import Evaluator
+from .evaluator.measures import Measure, Diversity, SumBottleneck, NFG, NCircles
 from .proposal.models.editor_basic import BasicEditor
-from .proposal.proposal import Proposal_Random, Proposal_Editor, Proposal_Mix
-from .sampler import Sampler_Recursive, Sampler_Improve, Sampler_SA, Sampler_MH
+from .proposal.proposal import Proposal_Editor
+from .sampler import Sampler_SA
 
 lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)
@@ -31,7 +32,7 @@ if __name__ == '__main__':
     parser.add_argument('--run_dir',    type=str,   default='runs/debug')
     parser.add_argument('--editor_dir', type=str,   default=None)
     parser.add_argument('--mols_init',  type=str,   default=None)
-    parser.add_argument('--mols_refe',  type=str,   default='actives_gsk3b,jnk3.txt')
+    # parser.add_argument('--mols_refe',  type=str,   default='actives_gsk3b,jnk3.txt')
     parser.add_argument('--vocab',      type=str,   default='chembl_func')
     parser.add_argument('--vocab_size', type=int,   default=1000)
     parser.add_argument('--max_size',   type=int,   default=40)
@@ -43,6 +44,7 @@ if __name__ == '__main__':
     parser.add_argument('--sampler',    type=str,   default='sa')
     parser.add_argument('--proposal',   type=str,   default='editor')
     parser.add_argument('--objectives', type=str,   default='gsk3b,jnk3,qed,sa')
+    parser.add_argument('--nov_term',   type=str,   default='Measure') # default as a dummy measure
     parser.add_argument('--nov_coef',   type=float, default=.1)
     
     parser.add_argument('--lr',             type=float, default=3e-4)
@@ -67,7 +69,6 @@ if __name__ == '__main__':
         if   obj == 'gsk3b' or obj == 'jnk3': wght, succ, clip = 1.0, 0.5, 0.6
         elif obj == 'qed'                   : wght, succ, clip = 1.0, 0.6, 0.7
         elif obj == 'sa'                    : wght, succ, clip = 1.0, .67, 0.7
-        elif obj.startswith('nov')          : wght, succ, clip = config['nov_coef'], 0, 1
         config['score_wght'][obj] = wght
         config['score_succ'][obj] = succ
         config['score_clip'][obj] = clip
@@ -99,13 +100,9 @@ if __name__ == '__main__':
         else: raise NotImplementedError
 
         ### evaluator
-        if config['mols_refe']: 
-            mols_refe = load_mols(config['data_dir'], config['mols_refe'])
-        else: mols_refe = []
-        evaluator = Evaluator(config, mols_refe)
-
-        ### scorer
-        scorer = Scorer(config, evaluator.fps_uniq)
+        scorer = Scorer(config)
+        measure = eval(config['nov_term'])()
+        evaluator = Evaluator(config, scorer, measure)
 
         ### sampler
         if config['mols_init']:
@@ -114,9 +111,5 @@ if __name__ == '__main__':
             mols_init = mols[:config['num_path']]
         else: mols_init = [
             Chem.MolFromSmiles('CC') for _ in range(config['num_path'])]
-        if   config['sampler'] == 're': sampler = Sampler_Recursive(config, run_dir, scorer, proposal, evaluator)
-        elif config['sampler'] == 'im': sampler = Sampler_Improve(config, run_dir, scorer, proposal, evaluator)
-        elif config['sampler'] == 'sa': sampler = Sampler_SA(config, run_dir, scorer, proposal, evaluator)
-        elif config['sampler'] == 'mh': sampler = Sampler_MH(config, run_dir, scorer, proposal, evaluator)
-        else: raise NotImplementedError
+        sampler = Sampler_SA(config, run_dir, proposal, evaluator)
         sampler.sample(mols_init)
