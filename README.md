@@ -8,7 +8,8 @@ The `conda` environment is exported as `environment.yml`. You can also manually 
 
 ```bash
 conda install -c conda-forge rdkit
-conda install tqdm tensorboard scikit-learn
+conda install scikit-learn=0.23.2
+conda install tqdm tensorboard
 conda install pytorch cudatoolkit=11.1 -c pytorch -c conda-forge
 conda install -c dglteam dgl-cuda11.1
 

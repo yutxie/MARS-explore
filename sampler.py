@@ -25,7 +25,6 @@ class Sampler():
         self.num_path = config['num_path']
         self.num_step = config['num_step']
         self.log_every = config['log_every']
-        self.nov_coef = config['nov_coef']
 
         ### for editing and training
         self.train = config['train']
@@ -74,13 +73,12 @@ class Sampler():
         ### early stop
         # TODO
         
-    def acc_rates(self, new_scores, old_scores, nov_scores):
+    def acc_rates(self, new_scores, old_scores):
         '''
         compute sampling acceptance rates
         @params:
             new_scores : scores of new proposed molecules
             old_scores : scores of old molcules
-            nov_scores : novelty scores of new proposed molecules
         '''
         raise NotImplementedError
 
@@ -102,13 +100,16 @@ class Sampler():
             self.step = step
             new_mols = self.proposal.propose(old_mols)
             new_indices = [i for i in range(self.num_path) if new_mols[i] is not None]
-            new_mols   = [new_mols[i]   for i in new_indices]
-            cmp_scores = [old_scores[i] for i in new_indices]
-            cmp_dicts  = [old_dicts[i]  for i in new_indices]
+            new_mols   = [new_mols[i]  for i in new_indices]
+            cmp_mols   = [old_mols[i]  for i in new_indices]
+            cmp_dicts  = [old_dicts[i] for i in new_indices]
             new_scores, new_dicts = self.evaluator.get_scores(new_mols)
-            nov_scores = self.evaluator.novelty(new_mols)
+            cmp_scores, cmp_dicts = self.evaluator.get_scores(cmp_mols, cmp_dicts)
             
-            train_indices = [i for j, i in enumerate(new_indices) if new_scores[j] > cmp_scores[j]]
+            train_indices = [
+                i for j, i in enumerate(new_indices) if 
+                new_scores[j] > cmp_scores[j]
+            ]
             # with open(os.path.join(self.run_dir, 'edits.txt'), 'a') as f:
             #     f.write('edits at step %i\n' % step)
             #     f.write('improve\tact\tarm\n')
@@ -117,7 +118,7 @@ class Sampler():
             #         improve = new_scores[i] > old_scores[i]
             #         f.write('%i\t%i\t%i\n' % (improve, edit['act'], edit['arm']))
             
-            acc_rates = self.acc_rates(new_scores, cmp_scores, nov_scores)
+            acc_rates = self.acc_rates(new_scores, cmp_scores)
             acc_rates = [min(1., max(0., A)) for A in acc_rates]
             updated_mols, updated_dicts = [], []
             for j, i in enumerate(new_indices):
@@ -195,12 +196,11 @@ class Sampler_SA(Sampler):
         self.T = max(self.T, 1e-2)
         return self.T
         
-    def acc_rates(self, new_scores, old_scores, nov_scores, *args):
+    def acc_rates(self, new_scores, old_scores, *args):
         acc_rates = []
         T = self.update_T()
         for i in range(len(new_scores)):
-            new_score = new_scores[i] + self.nov_coef * nov_scores[i]
-            A = new_score / max(old_scores[i], 1e-6)
+            A = new_scores[i] / max(old_scores[i], 1e-6)
             A = min(1, max(A, 0))
             A = min(1., A ** (1. / T))
             acc_rates.append(A)

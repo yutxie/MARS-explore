@@ -45,7 +45,7 @@ if __name__ == '__main__':
     parser.add_argument('--proposal',   type=str,   default='editor')
     parser.add_argument('--objectives', type=str,   default='gsk3b,jnk3,qed,sa')
     parser.add_argument('--nov_term',   type=str,   default='Measure') # default as a dummy measure
-    parser.add_argument('--nov_coef',   type=float, default=.1)
+    parser.add_argument('--nov_coef',   type=float, default=1.)
     
     parser.add_argument('--lr',             type=float, default=3e-4)
     parser.add_argument('--dataset_size',   type=int,   default=50000)
@@ -94,10 +94,7 @@ if __name__ == '__main__':
             path = os.path.join(config['root_dir'], config['editor_dir'], 'model_best.pt')
             editor.load_state_dict(torch.load(path, map_location=torch.device(config['device'])))
             print('successfully loaded editor model from %s' % path)
-        if config['proposal'] == 'random': proposal = Proposal_Random(config)
-        elif config['proposal'] == 'editor': proposal = Proposal_Editor(config, editor)
-        elif config['proposal'] == 'mix': proposal = Proposal_Mix(config, editor)
-        else: raise NotImplementedError
+        proposal = Proposal_Editor(config, editor)
 
         ### evaluator
         scorer = Scorer(config)

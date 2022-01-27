@@ -18,7 +18,7 @@ class StreamSampler():
             else: continue
 
     def __len__(self):
-        return self.N
+        return len(self.data)
 
     def __getitem__(self, index):
         return self.data[index]

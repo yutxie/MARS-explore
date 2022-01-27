@@ -34,17 +34,14 @@ class Evaluator():
         self.n_succ_dict = {k: 0 for k in config['objectives']} 
 
     def get_scores(self, *args, **kargs):
-        return self.scorer.get_scores(*args, **kargs)
-
-    def novelty(self, mols):
-        return self.measure.novelty(mols)
+        return self.scorer.get_scores(self.measure, *args, **kargs)
 
     def update(self, mols, dicts):
         self.N += len(mols)
-        self.measure.update(mols)
 
         ### uniqueness
         # fps_uniq   = [] # len() < n
+        mols_uniq = [] # len() < n
         dicts_uniq = [] # len() < n
         for mol, score_dict in zip(mols, dicts):
             mol = standardize_mol(mol)
@@ -55,8 +52,10 @@ class Evaluator():
 
                 # fp = mol_to_fp(mol)
                 # fps_uniq.append(fp)
+                mols_uniq.append(mol)
                 dicts_uniq.append(score_dict)
         # self.fps_uniq.update(fps_uniq)
+        self.measure.update(mols)
             
         ### success rate, novelty, and diversity
         # for fp, score_dict in zip(fps_uniq, dicts_uniq):
@@ -102,7 +101,7 @@ class Evaluator():
             'n_uniq' : n_uniq,
             'n_succ' : self.n_succ,
             # 'n_circ' : len(self.fps_circ)
-            'measure' : self.measure.report(),
+            # 'measure' : self.measure.report(),
         }
         # succ_dict = {k : 1. * v / n_uniq for k, v in self.n_succ_dict.items()}
         # return metrics, succ_dict

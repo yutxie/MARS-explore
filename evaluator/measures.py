@@ -43,28 +43,30 @@ class Measure():
         return [0] * len(mols)
 
     def report(self):
-        return 0
+        raise NotImplementedError
     
     
 class DissimilarityBasedMeasure(Measure):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
-        self.dis_mat = np.zeros((0, 0))
-        self.vecs = StreamSampler(S=5000)
+        # self.dis_mat = np.zeros((0, 0))
+        self.vecs = StreamSampler()
 
     def update(self, mols=[]):
         vecs = self.vectorizer(mols)
         self.vecs.update(vecs)
-        vecs = self.vecs[:]
-        self.dis_mat = 1. - self.sim_mat_func(vecs, vecs)
+        # self.dis_mat = 1. - \
+        #     self.sim_mat_func(self.vecs, self.vecs)
+
 
 class Diversity(DissimilarityBasedMeasure):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
 
     def novelty(self, mols=[], normalize=False):
+        if len(self.vecs) < 1: return [0] * len(mols)
         vecs = self.vectorizer(mols)
-        dis_mat = 1. - self.sim_mat_func(vecs, self.vecs[:]) # (n_new, n_old)
+        dis_mat = 1. - self.sim_mat_func(vecs, self.vecs) # (n_new, n_old)
         if normalize:
             dis_sum = dis_mat.sum(axis=1) # (n_new,)
             old_div = self.report()
@@ -85,8 +87,9 @@ class SumBottleneck(DissimilarityBasedMeasure):
         super().__init__(*args, **kargs)
 
     def novelty(self, mols=[], approx=True):
+        if len(self.vecs) < 1: return [0] * len(mols)
         vecs = self.vectorizer(mols)
-        dis_mat = 1. - self.sim_mat_func(vecs, self.vecs[:]) # (n_new, n_old)
+        dis_mat = 1. - self.sim_mat_func(vecs, self.vecs) # (n_new, n_old)
         if not approx:
             raise NotImplementedError
         else: return dis_mat.min(axis=1) # (n_new,)
@@ -125,25 +128,26 @@ class NFG(ReferenceBasedMeasure):
 
 
 class NCircles(Measure):
-    def __init__(self, t=0.24, *args, **kargs):
+    def __init__(self, t=0.10, *args, **kargs):
         super().__init__(*args, **kargs)
-        self.vecs = StreamSampler(S=5000)
-        self.t = t
+        self.vecs = StreamSampler()
+        self.t = t # t (similarity threshold) = 1-t in the paper
 
     def update(self, mols=[]):
         vecs = self.vectorizer(mols)
         for vec in vecs:
             if len(self.vecs) > 0:
-                sims = self.sim_mat_func([vec], self.vecs[:])
+                sims = self.sim_mat_func([vec], self.vecs)
                 if sims.max() >= self.t:
                     continue
             self.vecs.update([vec])
 
     def novelty(self, mols=[]):
+        if len(self.vecs) < 1: return [0] * len(mols)
         vecs = self.vectorizer(mols)
-        sim_mat = self.sim_mat_func(vecs, self.vecs[:])
+        sim_mat = self.sim_mat_func(vecs, self.vecs)
         sim_max = sim_mat.max(axis=1)
         return sim_max < self.t
 
     def report(self):
-        return len(self.vecs)
+        return self.vecs.N
